@@ -2,6 +2,25 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export const tools: Anthropic.Tool[] = [
   {
+    name: 'get_tasks',
+    description:
+      'Get a list of tasks (follow-ups, calls, to-dos) from Salesforce. Use when the user asks what tasks are open, what follow-ups are scheduled, or what activity is logged against a record.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        what_id: {
+          type: 'string',
+          description: 'Filter tasks by the ID of a linked Account or Opportunity'
+        },
+        status: {
+          type: 'string',
+          description: 'Filter by task status: "Not Started", "In Progress", or "Completed"'
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: 'search_records',
     description:
       'Search for Salesforce records by name or keyword. Use this when the user asks about accounts, contacts, or opportunities without providing a specific ID. Also use this to look up an ID before taking action on a record.',

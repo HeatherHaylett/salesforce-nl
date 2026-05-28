@@ -37,6 +37,24 @@ class RateLimiter {
 // 10 Salesforce API calls per 10 seconds
 const sfRateLimiter = new RateLimiter(10, 10_000)
 
+// Read-only operations are safe to retry — writes are not (risk of duplicate records)
+const READ_TOOLS = new Set(['get_opportunities', 'search_records', 'get_record_details', 'get_tasks'])
+
+// Retry with exponential backoff — reads only
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (i === attempts - 1) throw err
+      const waitMs = 1000 * (i + 1) // 1s, 2s
+      console.log(`[retry] Attempt ${i + 1} failed — retrying in ${waitMs}ms`)
+      await new Promise(res => setTimeout(res, waitMs))
+    }
+  }
+  throw new Error('Unreachable')
+}
+
 function getSystemPrompt() {
   const today = new Date().toISOString().split('T')[0]
   return `You are a Salesforce assistant. Help users query and update their Salesforce data using plain language.
@@ -104,10 +122,21 @@ export async function runAgent(
         const input = block.input as Record<string, unknown>
         let result: unknown
 
+        // Observability — log every tool call with duration
+        const start = Date.now()
+        console.log(`[${new Date().toISOString()}] tool_call: ${toolName}`, input)
+
         try {
-          result = await executeTool(toolName, input)
+          const run = () => executeTool(toolName, input)
+          result = READ_TOOLS.has(toolName) ? await withRetry(run) : await run()
+          console.log(`[${new Date().toISOString()}] tool_result: ${toolName} (${Date.now() - start}ms)`)
         } catch (err) {
-          result = { error: String(err) }
+          // Improved fallback — structured error Claude can explain to the user
+          console.log(`[${new Date().toISOString()}] tool_error: ${toolName} (${Date.now() - start}ms)`, String(err))
+          result = {
+            error: `Tool ${toolName} failed: ${String(err)}`,
+            suggestion: 'You may want to try again or rephrase your request.'
+          }
         }
 
         toolResults.push({
@@ -133,6 +162,12 @@ async function executeTool(
   await sfRateLimiter.throttle()
 
   switch (name) {
+    case 'get_tasks':
+      return sf.getTasks({
+        whatId: input.what_id as string | undefined,
+        status: input.status as string | undefined
+      })
+
     case 'get_opportunities':
       return sf.getOpportunities({
         stage: input.stage as string | undefined,

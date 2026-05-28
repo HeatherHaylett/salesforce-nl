@@ -69,6 +69,29 @@ export async function getOpportunities(filters?: { stage?: string; accountName?:
   return result.records
 }
 
+// Get tasks, optionally filtered by account/opportunity or status
+export async function getTasks(filters?: { whatId?: string; status?: string }) {
+  await connect()
+  let query = `SELECT Id, Subject, Status, ActivityDate, Description, What.Name
+               FROM Task`
+  const conditions: string[] = []
+
+  if (filters?.whatId) {
+    conditions.push(`WhatId = '${sanitize(filters.whatId)}'`)
+  }
+  if (filters?.status) {
+    conditions.push(`Status = '${sanitize(filters.status)}'`)
+  }
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ')
+  }
+  query += ' ORDER BY ActivityDate DESC LIMIT 20'
+
+  const result = await conn.query(query)
+  return result.records
+}
+
 // Create a follow-up task linked to a record
 export async function createTask(
   subject: string,
