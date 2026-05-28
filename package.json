@@ -5,6 +5,7 @@
   "scripts": {
     "start": "ts-node src/index.ts",
     "mcp": "ts-node src/mcp-server.ts",
+    "stress": "ts-node src/stress-test.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
