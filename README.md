@@ -50,7 +50,7 @@ Fill in your values in `.env`.
 
 **4. Run**
 ```bash
-npx ts-node src/index.ts
+npm start
 ```
 
 ## Available operations
@@ -59,23 +59,44 @@ npx ts-node src/index.ts
 |---|---|
 | "Show me open opportunities" | Lists all open deals with stage and amount |
 | "What deals are closing this quarter?" | Filters by close date |
+| "What follow-ups do I have open?" | Lists tasks by status |
 | "Move [company] to [stage]" | Updates opportunity stage |
 | "Add [name] at [company], email [email]" | Creates a new contact |
 | "Log a follow-up with [company] — [notes]" | Creates a task linked to the account |
+
+## MCP server
+
+The same Salesforce tools are available as an MCP server, making them accessible from Claude Code or any Claude-powered app:
+
+```bash
+npm run mcp
+```
+
+Connect from Claude Code by adding to `.claude/mcp_servers.json`:
+```json
+{
+  "salesforce": {
+    "command": "npx",
+    "args": ["ts-node", "/path/to/salesforce-nl/src/mcp-server.ts"]
+  }
+}
+```
 
 ## Project structure
 
 ```
 src/
-├── index.ts       # CLI loop
-├── agent.ts       # Claude agentic loop + rate limiting
-├── tools.ts       # Tool definitions Claude uses to route requests
-└── salesforce.ts  # Salesforce operations via jsforce
+├── index.ts        # CLI loop
+├── agent.ts        # Claude agentic loop, rate limiting, retries, observability
+├── tools.ts        # Tool definitions Claude uses to decide what to call
+├── salesforce.ts   # Salesforce operations via jsforce
+└── mcp-server.ts   # MCP server — exposes tools to any Claude app
 ```
 
 ## Reliability
 
-- Salesforce API calls are rate-limited (10 calls / 10s sliding window)
-- Tool calls capped at 10 per conversation turn to prevent runaway loops
-- SOQL inputs sanitized against injection; object types validated against an allowlist
-- Tool failures return structured errors Claude can explain rather than raw stack traces
+- **Retries:** read operations retry up to 3 times with exponential backoff; writes are not retried to avoid duplicate records
+- **Rate limiting:** 10 Salesforce API calls per 10s sliding window; 10 tool calls max per conversation turn
+- **Observability:** every tool call logged with timestamp, tool name, and duration
+- **Fallbacks:** tool failures return structured `{ error, suggestion }` objects Claude can explain to the user
+- **Input sanitization:** single quotes escaped in all SOQL WHERE clauses; object types validated against an allowlist
