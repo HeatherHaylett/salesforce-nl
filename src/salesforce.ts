@@ -12,11 +12,26 @@ export async function connect() {
   return conn
 }
 
+// Whitelist of allowed Salesforce object types — prevents object injection in FROM clause
+const ALLOWED_OBJECTS = new Set(['Account', 'Contact', 'Opportunity', 'Task', 'Lead'])
+
+function assertAllowedObject(objectType: string): void {
+  if (!ALLOWED_OBJECTS.has(objectType)) {
+    throw new Error(`Object type "${objectType}" is not allowed`)
+  }
+}
+
+// Escape single quotes to prevent SOQL injection in WHERE clauses
+function sanitize(value: string): string {
+  return value.replace(/'/g, "\\'")
+}
+
 // Search for records by name or keyword
 export async function searchRecords(objectType: string, searchTerm: string) {
   await connect()
+  assertAllowedObject(objectType)
   const result = await conn.query(
-    `SELECT Id, Name FROM ${objectType} WHERE Name LIKE '%${searchTerm}%' LIMIT 10`
+    `SELECT Id, Name FROM ${objectType} WHERE Name LIKE '%${sanitize(searchTerm)}%' LIMIT 10`
   )
   return result.records
 }
@@ -35,10 +50,10 @@ export async function getOpportunities(filters?: { stage?: string; accountName?:
   const conditions: string[] = []
 
   if (filters?.stage) {
-    conditions.push(`StageName = '${filters.stage}'`)
+    conditions.push(`StageName = '${sanitize(filters.stage)}'`)
   }
   if (filters?.accountName) {
-    conditions.push(`Account.Name LIKE '%${filters.accountName}%'`)
+    conditions.push(`Account.Name LIKE '%${sanitize(filters.accountName)}%'`)
   }
   // Exclude closed deals by default unless a stage filter is specified
   if (!filters?.stage) {
