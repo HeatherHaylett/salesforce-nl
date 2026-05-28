@@ -4,6 +4,39 @@ import * as sf from './salesforce'
 
 const client = new Anthropic()
 
+// Max tool calls allowed in a single agent turn — prevents runaway loops
+const MAX_TOOL_CALLS_PER_TURN = 10
+
+// Sliding window rate limiter for Salesforce API calls
+// Protects against hitting Salesforce's daily API limits on dev orgs
+class RateLimiter {
+  private timestamps: number[] = []
+
+  constructor(
+    private maxCalls: number,  // max calls allowed
+    private windowMs: number   // within this time window
+  ) {}
+
+  async throttle(): Promise<void> {
+    const now = Date.now()
+    // Drop timestamps outside the current window
+    this.timestamps = this.timestamps.filter(t => now - t < this.windowMs)
+
+    if (this.timestamps.length >= this.maxCalls) {
+      // Wait until the oldest call falls outside the window
+      const oldest = this.timestamps[0]!
+      const waitMs = this.windowMs - (now - oldest)
+      console.log(`[rate-limiter] Limit reached — waiting ${waitMs}ms`)
+      await new Promise(res => setTimeout(res, waitMs))
+    }
+
+    this.timestamps.push(Date.now())
+  }
+}
+
+// 10 Salesforce API calls per 10 seconds
+const sfRateLimiter = new RateLimiter(10, 10_000)
+
 function getSystemPrompt() {
   const today = new Date().toISOString().split('T')[0]
   return `You are a Salesforce assistant. Help users query and update their Salesforce data using plain language.
@@ -30,6 +63,7 @@ export async function runAgent(
   ]
 
   let reply = ''
+  let toolCallCount = 0
 
   // Agentic loop — Claude may call multiple tools before giving a final response
   while (true) {
@@ -60,6 +94,12 @@ export async function runAgent(
       for (const block of response.content) {
         if (block.type !== 'tool_use') continue
 
+        // Enforce per-turn tool call cap
+        toolCallCount++
+        if (toolCallCount > MAX_TOOL_CALLS_PER_TURN) {
+          throw new Error(`Tool call limit (${MAX_TOOL_CALLS_PER_TURN}) exceeded in a single turn`)
+        }
+
         const toolName = block.name
         const input = block.input as Record<string, unknown>
         let result: unknown
@@ -89,6 +129,9 @@ async function executeTool(
   name: string,
   input: Record<string, unknown>
 ): Promise<unknown> {
+  // Apply rate limiting before every Salesforce API call
+  await sfRateLimiter.throttle()
+
   switch (name) {
     case 'get_opportunities':
       return sf.getOpportunities({
