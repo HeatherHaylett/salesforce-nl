@@ -35,7 +35,7 @@ class RateLimiter {
 }
 
 // 10 Salesforce API calls per 10 seconds
-const sfRateLimiter = new RateLimiter(10, 10_000)
+export const sfRateLimiter = new RateLimiter(10, 10_000)
 
 // Read-only operations are safe to retry — writes are not (risk of duplicate records)
 const READ_TOOLS = new Set(['get_opportunities', 'search_records', 'get_record_details', 'get_tasks'])

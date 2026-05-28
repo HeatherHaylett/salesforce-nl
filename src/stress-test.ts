@@ -12,6 +12,7 @@
  */
 
 import { searchRecords } from './salesforce'
+import { sfRateLimiter } from './agent'
 import jsforce from 'jsforce'
 import dotenv from 'dotenv'
 dotenv.config()
@@ -47,6 +48,7 @@ async function testRateLimiter() {
 
   for (let i = 0; i < 15; i++) {
     const start = Date.now()
+    await sfRateLimiter.throttle()   // go through the same limiter the agent uses
     await searchRecords('Account', 'Acme')
     const duration = Date.now() - start
     times.push(duration)

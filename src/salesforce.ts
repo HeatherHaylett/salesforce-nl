@@ -21,9 +21,12 @@ function assertAllowedObject(objectType: string): void {
   }
 }
 
-// Escape single quotes to prevent SOQL injection in WHERE clauses
+// Escape special characters to prevent SOQL injection in WHERE clauses
+// Backslashes must be escaped first — escaping quotes second avoids double-escaping
 function sanitize(value: string): string {
-  return value.replace(/'/g, "\\'")
+  return value
+    .replace(/\\/g, '\\\\') // backslash → \\
+    .replace(/'/g, "\\'")   // single quote → \'
 }
 
 // Search for records by name or keyword
