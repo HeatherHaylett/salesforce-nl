@@ -19,7 +19,8 @@ User input
 ## Running the project
 
 ```bash
-npx ts-node src/index.ts
+npm start          # CLI agent
+npm run mcp        # MCP server (exposes tools to Claude Code or any Claude app)
 ```
 
 Requires a `.env` file (see `.env.example`):
@@ -38,12 +39,14 @@ sf org display --target-org devorg --verbose
 | File | Purpose |
 |---|---|
 | `src/index.ts` | CLI entry point — readline loop, maintains conversation history |
-| `src/agent.ts` | Claude agentic loop, tool execution, rate limiting |
+| `src/agent.ts` | Claude agentic loop, tool execution, retries, rate limiting, observability |
 | `src/tools.ts` | Tool definitions (name, description, input schema) that Claude uses to decide what to call |
 | `src/salesforce.ts` | jsforce client, all Salesforce operations, input sanitization |
+| `src/mcp-server.ts` | MCP server — same tools over stdio, connectable from any Claude app |
 
 ## Available tools
 
+- `get_tasks` — list tasks, filter by linked record or status
 - `get_opportunities` — list open deals, filter by stage or account
 - `search_records` — find Accounts, Contacts, or Opportunities by name
 - `get_record_details` — full details on a record by ID
@@ -53,14 +56,17 @@ sf org display --target-org devorg --verbose
 
 ## Reliability
 
-- **Rate limiting:** 10 Salesforce API calls per 10 seconds (sliding window) + 10 tool calls max per agent turn
+- **Retries:** reads retry up to 3 times with exponential backoff; writes are not retried to avoid duplicates
+- **Rate limiting:** 10 Salesforce API calls per 10s sliding window; 10 tool calls max per agent turn
+- **Observability:** every tool call logged with timestamp, tool name, and duration
+- **Fallbacks:** failures return `{ error, suggestion }` so Claude can explain what went wrong
 - **Input sanitization:** single quotes escaped in all SOQL WHERE clauses; object types validated against an allowlist
-- **Error handling:** tool failures return structured errors Claude can explain to the user
 
 ## Adding a new tool
 
 1. Add the Salesforce operation as a named export in `salesforce.ts`
 2. Add the tool definition (name, description, input_schema) to the `tools` array in `tools.ts`
 3. Add a `case` to the `switch` in `executeTool` in `agent.ts`
+4. If exposing via MCP, add the tool to both handler functions in `mcp-server.ts`
 
-The description in step 2 is load-bearing — it's what Claude reads to decide when and how to call the tool. Write it like you're briefing a smart colleague.
+The description in step 2 is load-bearing — it's what Claude reads to decide when and how to call the tool. Write it like you're briefing a smart colleague. Change a description and Claude's routing behavior changes with it.
